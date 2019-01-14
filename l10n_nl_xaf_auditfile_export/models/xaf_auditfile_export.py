@@ -283,3 +283,59 @@ class XafAuditfileExport(models.Model):
     def get_move_period_number(self, move):
         period_number = self.get_period_number(move.date)
         return period_number
+        
+    ## Below added for openingBalance
+
+    #~ @api.multi
+    #~ def get_obline_count():
+        #~ return len(self.get_accounts()) # the number of opening balance lines is same as the number of accounts
+        
+    @api.multi
+    def get_obline_total_debit(self):
+        '''return total debit of move lines for opening balance'''
+        self.env.cr.execute(
+            'select sum(debit) from account_move_line '
+            'where date < %s '
+            'and (company_id=%s or company_id is null)',
+            (self.date_start, self.company_id.id, ))
+        return round(self.env.cr.fetchall()[0][0], 2)
+
+    @api.multi
+    def get_obline_total_credit(self):        
+        '''return total credit of move lines for opening balance'''
+        self.env.cr.execute(
+            'select sum(credit) from account_move_line '
+            'where date < %s '
+            'and (company_id=%s or company_id is null)',
+            (self.date_start, self.company_id.id, ))
+        return round(self.env.cr.fetchall()[0][0], 2)    
+        
+
+        
+    @api.multi
+    def get_oblines(self): 
+        res=[]
+        number=0
+        # get balances
+        self.env.cr.execute(
+            'select a.code, round(sum(l.balance),2) from account_account a left join account_move_line l on (a.id=l.account_id)'
+            'and date < %s '
+            'and (l.company_id=%s or l.company_id is null)'
+            'group by a.code order by a.code',
+            (self.date_start, self.company_id.id, ))
+        rows=self.env.cr.fetchall() # cursor is not iterable? so had to do this     
+        for row in rows:           
+              number+=1
+              r={}
+              r['number']=number
+              r['code']=row[0]
+              r['balance']=row[1] if row[1] else 0.0
+              r['type']='C' if row[1] and row[1]<0 else 'D'
+              res.append(r.copy())
+        return res        
+                
+        
+            
+    
+        
+        

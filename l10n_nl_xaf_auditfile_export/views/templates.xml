@@ -101,9 +101,6 @@
                 <glAccountHistory />
             </ledgerAccount>
         </generalLedger>
-        <!-- we might fill in those later
-        <openingBalance />
-        /-->
         <vatCodes>
             <vatCode t-foreach="self.get_taxes()" t-as="t">
                 <vatID><t t-esc="t.id" /></vatID>
@@ -120,6 +117,19 @@
                 <endDatePeriod><t t-esc="p.date_end" /></endDatePeriod>
             </period>
         </periods>
+        <!-- JV openingBalance section added /-->
+        <openingBalance>
+            <opBalDate><t t-esc="self.date_start" /></opBalDate>
+            <linesCount><t t-esc="len(self.get_accounts())" /></linesCount>
+            <totalDebit><t t-esc="self.get_obline_total_debit()" /></totalDebit>
+            <totalCredit><t t-esc="self.get_obline_total_credit()" /></totalCredit>
+            <obLine t-foreach="self.get_oblines()" t-as="l">
+                <nr><t t-esc="l['number']" /></nr>
+                <accID><t t-esc="l['code']" /></accID>
+                <amnt><t t-esc="l['balance']" /></amnt>
+                <amntTp><t t-esc="l['type']" /></amntTp>
+            </obLine>
+        </openingBalance> 
         <transactions>
             <linesCount><t t-esc="self.get_move_line_count()" /></linesCount>
             <totalDebit><t t-esc="self.get_move_line_total_debit()" /></totalDebit>
