@@ -298,7 +298,11 @@ class XafAuditfileExport(models.Model):
             'where date < %s '
             'and (company_id=%s or company_id is null)',
             (self.date_start, self.company_id.id, ))
-        return round(self.env.cr.fetchall()[0][0], 2)
+        dtot=self.env.cr.fetchall()[0][0]
+        if dtot:
+            return round(dtot, 2)
+        else:
+            return 0.0    
 
     @api.multi
     def get_obline_total_credit(self):        
@@ -308,10 +312,12 @@ class XafAuditfileExport(models.Model):
             'where date < %s '
             'and (company_id=%s or company_id is null)',
             (self.date_start, self.company_id.id, ))
-        return round(self.env.cr.fetchall()[0][0], 2)    
-        
-
-        
+        ctot=self.env.cr.fetchall()[0][0]
+        if ctot:
+            return round(ctot, 2)
+        else:
+            return 0.0    
+                
     @api.multi
     def get_oblines(self): 
         res=[]
