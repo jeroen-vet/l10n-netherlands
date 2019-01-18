@@ -335,7 +335,7 @@ class XafAuditfileExport(models.Model):
               r={}
               r['number']=number
               r['code']=row[0]
-              r['balance']=row[1] if row[1] else 0.0
+              r['balance']=abs(row[1]) if row[1] else 0.0
               r['type']='C' if row[1] and row[1]<0 else 'D'
               res.append(r.copy())
         return res        
