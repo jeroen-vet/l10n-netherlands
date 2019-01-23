@@ -114,7 +114,7 @@ class XafAuditfileExport(models.Model):
     def button_generate(self):
         self.date_generated = fields.Datetime.now(self)
         xml = self.env.ref('l10n_nl_xaf_auditfile_export.auditfile_template')\
-            .render(values={
+            .render(values={ 
                 'self': self,
             })
         # the following is dealing with the fact that qweb templates don't like
@@ -161,7 +161,7 @@ class XafAuditfileExport(models.Model):
         '''return a generator over partners and suppliers'''
         offset = 0
         while True:
-            results = self.env['res.partner'].search(
+            results = self.env['res.partner'].sudo().search( # JV added sudo so that user info of updater can be displayed no matter how currently logged in
                 [
                     '|',
                     ('customer', '=', True),
@@ -185,7 +185,7 @@ class XafAuditfileExport(models.Model):
     @api.multi
     def get_accounts(self):
         '''return recordset of accounts'''
-        return self.env['account.account'].search([
+        return self.env['account.account'].sudo().search([ # JV added sudo so that user info of updater can be displayed no matter how currently logged in
             ('company_id', '=', self.company_id.id),
         ])
 
