@@ -56,6 +56,27 @@ class XafAuditfileExport(models.Model):
             if auditfile.date_start:
                 auditfile.fiscalyear_name = auditfile.date_start.year
 
+  # compute non distributed balance on unaffected earnings
+    def _compute_unaffected_earnings(self):
+        unaffected_earnings_xml_ref = self.env.ref('account.data_unaffected_earnings')
+        if unaffected_earnings_xml_ref:
+            for auditfile in self:        
+            # get first account of this type current earnings
+                cea=self.env['account.account'].search([('user_type_id','=',unaffected_earnings_xml_ref.id),'|',('company_id','=',auditfile.company_id.id),('company_id','=',False)],limit=1)[0]
+                # get totals to add in
+                auditfile.env.cr.execute(
+                'select sum(l.balance) from account_move_line l join account_account a on (a.id=l.account_id) join account_account_type t on (t.id=a.user_type_id) '
+                'where date < %s '
+                'and (l.company_id=%s or l.company_id is null) '
+                'and t.include_initial_balance=False',            
+                (auditfile.date_start, auditfile.company_id.id, )) 
+                resrow=auditfile.env.cr.fetchone()
+                auditfile.prev_years_earnings_bal=resrow[0]
+                auditfile.current_earnings_acc_code=cea.code
+
+
+
+
     name = fields.Char('Name')
     date_start = fields.Date('Start date', required=True)
     date_end = fields.Date('End date', required=True)
@@ -69,6 +90,8 @@ class XafAuditfileExport(models.Model):
     date_generated = fields.Datetime(
         'Date generated', readonly=True, copy=False)
     company_id = fields.Many2one('res.company', 'Company', required=True)
+    prev_years_earnings_bal=fields.Float(compute='_compute_unaffected_earnings')
+    current_earnings_acc_code=fields.Char(compute='_compute_unaffected_earnings')
 
     unit4 = fields.Boolean(
         help="The Unit4 system expects a value for "
@@ -165,7 +188,7 @@ class XafAuditfileExport(models.Model):
 
         except etree.XMLSyntaxError as e:
             logging.getLogger(__name__).error(e)
-            self.message_post(e)
+            self.message_post(body=e)
         finally:
             shutil.rmtree(tmpdir)
             shutil.rmtree(archivedir)
@@ -178,7 +201,7 @@ class XafAuditfileExport(models.Model):
     @api.multi
     def get_partners(self):
         '''return a generator over partners'''
-        partner_ids = self.env['res.partner'].search([
+        partner_ids = self.env['res.partner'].sudo().search([ # JV added sudo so that user info of updater can be displayed no matter how currently logged in
             '|',
             ('customer', '=', True),
             ('supplier', '=', True),
@@ -195,7 +218,7 @@ class XafAuditfileExport(models.Model):
     @api.multi
     def get_accounts(self):
         '''return recordset of accounts'''
-        return self.env['account.account'].search([
+        return self.env['account.account'].sudo().search([ # JV added sudo so that user info of updater can be displayed no matter how currently logged in
             ('company_id', '=', self.company_id.id),
         ])
 
@@ -307,3 +330,77 @@ class XafAuditfileExport(models.Model):
     def get_move_period_number(self, move):
         period_number = self.get_period_number(move.date)
         return period_number
+        
+
+    ## Below added for openingBalance
+
+    #~ @api.multi
+    #~ def get_obline_count():
+        #~ return len(self.get_accounts()) # the number of opening balance lines is same as the number of accounts
+
+    @api.multi
+    def get_obline_total_debit(self):
+        '''return total debit of move lines for opening balance'''
+        self.env.cr.execute(
+            'select sum(l.debit) from account_move_line l join account_account a on (a.id=l.account_id) join account_account_type t on (t.id=a.user_type_id) '
+            'where l.date < %s '
+            'and (l.company_id=%s or l.company_id is null) '
+            'and t.include_initial_balance=True',
+            (self.date_start, self.company_id.id, ))
+        dtot=self.env.cr.fetchall()[0][0]
+        if dtot:
+            return round(dtot+(self.prev_years_earnings_bal if self.prev_years_earnings_bal>0 else 0.0), 2)
+        else:
+            return 0.0    
+
+    @api.multi
+    def get_obline_total_credit(self):        
+        '''return total credit of move lines for opening balance'''
+        self.env.cr.execute(
+            'select sum(credit) from account_move_line l join account_account a on (a.id=l.account_id) join account_account_type t on (t.id=a.user_type_id) '
+            'where date < %s '
+            'and (l.company_id=%s or l.company_id is null) '
+            'and t.include_initial_balance=True',    
+            (self.date_start, self.company_id.id, ))
+        ctot=self.env.cr.fetchall()[0][0]
+        if ctot:
+
+            return round(ctot-(self.prev_years_earnings_bal if self.prev_years_earnings_bal<0 else 0.0), 2)
+        else:
+            return 0.0  
+
+
+
+    @api.multi
+    def get_oblines(self): 
+        res=[]
+        number=0
+        # get balances
+        self.env.cr.execute(
+            'select a.code, round(sum(l.balance),2) from account_account a join account_account_type t on (t.id=a.user_type_id) left join account_move_line l on (a.id=l.account_id) '
+            'and date < %s '
+            'and (l.company_id=%s or l.company_id is null) '
+            'and t.include_initial_balance=True '
+            'group by a.code order by a.code',
+            (self.date_start, self.company_id.id, ))
+        rows=self.env.cr.fetchall() # cursor is not iterable? so had to do this
+        flag=False 
+        for row in rows:           
+              number+=1
+              r={}
+              r['number']=number
+              r['code']=row[0]
+              r['balance']=abs(row[1]) if row[1] else 0.0
+              r['type']='C' if row[1] and row[1]<0 else 'D'
+              if r['code']==self.current_earnings_acc_code and not flag:
+                  balance=self.prev_years_earnings_bal+(row[1] if row[1] else 0.0)
+                  r['balance']=round(abs(balance),2)
+                  r['type']='C' if balance<0 else 'D'
+                  flag=True              
+              res.append(r.copy())
+        return res        
+
+
+
+
+        
