@@ -181,7 +181,7 @@
                         /-->
                         <currency t-if="l.currency_id and l.amount_currency">
                             <curCode><t t-esc="l.currency_id.name" /></curCode>
-                            <curAmnt><t t-esc="l.amount_currency" /></curAmnt>
+                            <curAmnt><t t-esc="round(l.amount_currency,2)" /></curAmnt>
                         </currency>
                     </trLine>
                 </transaction>
